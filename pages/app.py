@@ -25,10 +25,10 @@ topic_dict = {
 }
 
 # Загрузка обученных моделей и TF-IDF векторайзеров для отзывов о ресторанах
-with open('/Users/valeriaalesnikova/Desktop/bootcamp/nlp_project-1/models/tfidf_vectorizer_restaurants_new.pkl', 'rb') as f:
+with open('models/tfidf_vectorizer_restaurants_new.pkl', 'rb') as f:
     tfidf_vectorizer_restaurants = pickle.load(f)
 
-with open('/Users/valeriaalesnikova/Desktop/bootcamp/nlp_project-1/models/logregmodel_new.pkl', 'rb') as f:
+with open('models/logregmodel_new.pkl', 'rb') as f:
     logreg_model_restaurants = pickle.load(f)
 
 # Загрузка TF-IDF векторайзера и модели для новостей из Telegram
