@@ -1,118 +1,114 @@
 import streamlit as st
-# import os
-import numpy as np
-# import pandas as pd
-import re
-import string
-import torch
-from collections import Counter
-from nltk.corpus import stopwords
-stop_words = set(stopwords.words('russian'))
+import time
+import pandas as pd
+import pickle
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 
-import torch.nn as nn
+# Словарь для оценок отзывов о ресторанах
+sentiment_dict = {
+    0: "Отвратительно! Даже не подходите к этому месту!",
+    1: "Плохо! Лучше бы остался дома.",
+    2: "Удовлетворительно, но не без недостатков. Ешьте на свой страх и риск.",
+    3: "Хорошо! Вполне достойное место для трапезы.",
+    4: "Отлично! Обязательно вернусь еще раз.",
+    5: "Великолепно! Как в раю, только с едой."
+}
 
+# Словарь для категорий новостей из Telegram
+topic_dict = {
+    "мода": 0,
+    "технологии": 1,
+    "финансы": 2,
+    "крипта": 3,
+    "спорт": 4
+}
 
-def data_preprocessing(text: str) -> str:
-    text = text.lower()
-    text = re.sub('<.*?>', '', text) # html tags
-    text = ''.join([c for c in text if c not in string.punctuation])# Remove punctuation
-    text = [word for word in text.split() if word not in stop_words] 
-    text = ' '.join(text)
+# Загрузка обученных моделей и TF-IDF векторайзеров для отзывов о ресторанах
+with open('/Users/valeriaalesnikova/Desktop/bootcamp/nlp_project-1/models/tfidf_vectorizer_restaurants_new.pkl', 'rb') as f:
+    tfidf_vectorizer_restaurants = pickle.load(f)
+
+with open('/Users/valeriaalesnikova/Desktop/bootcamp/nlp_project-1/models/logregmodel_new.pkl', 'rb') as f:
+    logreg_model_restaurants = pickle.load(f)
+
+# Загрузка TF-IDF векторайзера и модели для новостей из Telegram
+with open('models/tfidf_vectorizer_tg.pkl', 'rb') as f:
+    tfidf_vectorizer_tg = pickle.load(f)
+
+with open('models/vectorsmodel_tg.pkl', 'rb') as f:
+    vectors_model_tg = pickle.load(f)
+
+# Функция для классификации отзывов о ресторанах
+def classify_review(review):
+    try:
+        start_time = time.time()
+        tfidf_review = tfidf_vectorizer_restaurants.transform([review])
+        logreg_prediction = logreg_model_restaurants.predict(tfidf_review)[0]
+        logreg_duration = time.time() - start_time
+        
+        sentiment_text = sentiment_dict.get(logreg_prediction, "Неизвестное настроение")
+        
+        return {
+            "Логистическая регрессия": (logreg_prediction, sentiment_text, logreg_duration)
+        }
+    except Exception as e:
+        return {
+            "Ошибка": (None, str(e), 0.0)
+        }
+
+def classify_news(news):
+    try:
+        start_time = time.time()
+        tfidf_news = tfidf_vectorizer_tg.transform([news])
+        prediction = vectors_model_tg.predict(tfidf_news)[0]
+        duration = time.time() - start_time
+        topic = topic_dict.get(prediction, "Неизвестная тема")
+        
+        return prediction, topic, duration
+    except Exception as e:
+        st.error(f"Ошибка при классификации новости: {str(e)}")
+        return None, "Неизвестная тема", 0.0
+
+def title_page():
+    st.markdown("""
+    ## Задача: разработать multipage-приложение с использованием Streamlit:
     
-    return text
-
-def padding(review_int: list, seq_len: int) -> np.array:
-    features = np.zeros((len(review_int), seq_len), dtype = int)
-    for i, review in enumerate(review_int):
-        if len(review) <= seq_len:
-            zeros = list(np.zeros(seq_len - len(review)))
-            new = zeros + review
-        else:
-            new = review[: seq_len]
-        features[i, :] = np.array(new)    
-        
-    return features
-
-def preprocess_single_string(input_string: str, seq_len: int, vocab_to_int: dict) -> list:
-    preprocessed_string = data_preprocessing(input_string)
-    result_list = []
-    for word in preprocessed_string.split():
-        try: 
-            result_list.append(vocab_to_int[word])
-        except KeyError as e:
-            print(f'{e}: not in dictionary!')
-    result_padded = padding([result_list], seq_len)[0]
-
-    return torch.tensor(result_padded)
-
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-
-class sentimentLSTM(nn.Module):
-    """
-    The LSTM model that will be used to perform Sentiment analysis.
-    """
+    **Страница 1 • Классификация отзыва на рестораны**
     
-    def __init__(self,
-                vocab_size: int, 
-                embedding_dim: int, 
-                hidden_dim: int,
-                n_layers: int,                
-                drop_prob=0.5) -> None:
-        
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.n_layers = n_layers
-        
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, 
-                            hidden_dim, 
-                            n_layers, 
-                            dropout=drop_prob, 
-                            batch_first=True
-                            )
-        
-        self.dropout = nn.Dropout()
-        
-        self.fc1 = nn.Linear(hidden_dim * SEQ_LEN, 512)
-        self.do = nn.Dropout()
-        self.fc2 = nn.Linear(512, 1)
-        self.sigmoid = nn.Sigmoid()
-        
-    def forward(self, x):
-        embeds = self.embedding(x)
-        lstm_out, _ = self.lstm(embeds)  
-        out = self.fc2(torch.tanh(self.do(self.fc1(lstm_out.flatten(1)))))
-        sig_out = self.sigmoid(out)
-        
-        return sig_out    
+    **Страница 2 • Классификация тематики новостей из телеграм каналов**
+    
+    Приложение предсказывает категорию новости на основе введенного пользователем текста новости.
+    """)
 
-VOCAB_SIZE = 6674
-EMBEDDING_DIM = 32
-HIDDEN_DIM = 64
-N_LAYERS = 2
-SEQ_LEN = 128
+def main():
+    st.title("Обработка естественного языка • Natural Language Processing")
+    
+    # Вызываем функцию для отображения титульной страницы
+    title_page()
 
-@st.cache_resource    
-def load_model():
-    model = sentimentLSTM(vocab_size=VOCAB_SIZE,
-                          embedding_dim=EMBEDDING_DIM,
-                          hidden_dim=HIDDEN_DIM,
-                          n_layers=N_LAYERS)
-    model.load_state_dict(torch.load('/Users/valeriaalesnikova/Desktop/bootcamp/nlp_project-1/pages/LSTM_model_weights.pt'))
-    model.eval()
-    return model
+    # Боковая панель для навигации
+    page = st.sidebar.selectbox("Выберите страницу", ["Отзывы о ресторанах", "Новости Telegram"])
 
+    if page == "Отзывы о ресторанах":
+        st.header("Классификация отзывов о ресторанах")
+        review = st.text_area("Введите отзыв о ресторане:")
 
-def predict_sentiment(review):
-    model = load_model()
-    vocab_to_int = torch.load('/Users/valeriaalesnikova/Desktop/bootcamp/nlp_project-1/pages/vocab.pkl')
-    prediction = model.to(device)(preprocess_single_string(review, seq_len=128, vocab_to_int=vocab_to_int).unsqueeze(0).to(device))
-    probability = prediction[0][0]
-    if probability > 0.50:
-        prediction = 'Positive review'
-        
-    else:
-        prediction = 'Negative review'
-    return prediction
+        if st.button("Классифицировать"):
+            predictions = classify_review(review)
+            for model, (pred, sentiment_text, dur) in predictions.items():
+                st.write(f"{model}: {sentiment_text} (за {dur:.2f} секунд)")
+
+    elif page == "Новости Telegram":
+        st.header("Классификация новостей Telegram")
+        news = st.text_area("Введите текст новости:")
+
+        if st.button("Классифицировать"):
+            prediction, topic, duration = classify_news(news)
+            if prediction is not None:
+                st.write(f"Предсказанная тема: {prediction}")
+                # st.write(f"Предсказанная тема: {topic} (за {duration:.2f} секунд)")
+            else:
+                st.write("Ошибка при классификации новости.")
+
+if __name__ == "__main__":
+    main()
